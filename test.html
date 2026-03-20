@@ -1,0 +1,164 @@
+git<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<style>
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
+.container_box { background: #252526; padding: 25px; border-radius: 8px; max-width: 700px; margin: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+h2 { color: #569cd6; border-bottom: 1px solid #333; padding-bottom: 10px; }
+.input_group { margin-bottom: 15px; }
+select, button { padding: 8px 12px; border-radius: 4px; border: 1px solid #3c3c3c; background: #3c3c3c; color: #d4d4d4; font-size: 14px; }
+button { cursor: pointer; background: #0e639c; border: none; font-weight: bold; }
+button:hover { background: #1177bb; }
+button:disabled { background: #555; cursor: not-allowed; }
+.matrix_table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #1e1e1e; }
+.matrix_table th, .matrix_table td { border: 1px solid #444; padding: 10px; text-align: center; }
+.matrix_table th { background: #2d2d30; color: #4ec9b0; }
+.terminal_box { background: #000; color: #0f0; font-family: 'Courier New', Courier, monospace; padding: 15px; border-radius: 5px; margin-top: 20px; height: 150px; overflow-y: auto; box-shadow: inset 0 0 10px #000; }
+.log_entry { margin: 2px 0; }
+.log_success { color: #4ec9b0; }
+.log_error { color: #f44747; }
+.log_system { color: #ce9178; }
+#workspace_area { display: none; }
+.action_btn { margin-right: 5px; background: #2b2b2b; border: 1px solid #555; }
+.action_btn:hover { background: #444; }
+</style>
+</head>
+<body>
+
+<div class="container_box">
+    <h2>[OS_Simulator] Hệ Thống Phân Quyền</h2>
+
+    <div id="login_area">
+        <div class="input_group">
+            <label>User đăng nhập:</label>
+            <select id="login_user_select"></select>
+            <button onclick="login_system()">Đăng nhập</button>
+        </div>
+    </div>
+
+    <div id="workspace_area">
+        <div class="input_group">
+            <span style="color: #ce9178;">Current Session: </span><strong id="current_user_display" style="color: #4ec9b0;"></strong>
+            <button onclick="logout_system()" style="background: #f44747; margin-left: 15px; padding: 4px 8px;">Đăng xuất</button>
+        </div>
+
+        <div class="input_group">
+            <label>Target File:</label>
+            <select id="target_file_select"></select>
+        </div>
+
+        <div class="input_group">
+            <button class="action_btn" onclick="execute_action(0, 'READ')">cat (Read)</button>
+            <button class="action_btn" onclick="execute_action(1, 'WRITE')">nano (Write)</button>
+            <button class="action_btn" onclick="execute_action(2, 'EXECUTE')">./run (Execute)</button>
+        </div>
+
+        <h3>Ma Trận Phân Quyền</h3>
+        <table class="matrix_table" id="matrix_display"></table>
+    </div>
+
+    <div class="terminal_box" id="terminal_log">
+        <div class="log_system">> System boot successful. Waiting for login...</div>
+    </div>
+</div>
+
+<script>
+const access_matrix = {
+    khai: { "bai_tap.cpp": [1, 1, 1], "system_config.sys": [1, 0, 0] },
+    guest: { "bai_tap.cpp": [1, 0, 0], "system_config.sys": [0, 0, 0] },
+    root_admin: { "bai_tap.cpp": [1, 1, 1], "system_config.sys": [1, 1, 1] }
+};
+
+let active_user = null;
+const terminal_log = document.getElementById("terminal_log");
+const login_user_select = document.getElementById("login_user_select");
+const target_file_select = document.getElementById("target_file_select");
+const login_area = document.getElementById("login_area");
+const workspace_area = document.getElementById("workspace_area");
+const current_user_display = document.getElementById("current_user_display");
+const matrix_display = document.getElementById("matrix_display");
+
+function write_log(message, type) {
+    const log_line = document.createElement("div");
+    log_line.className = `log_entry ${type}`;
+    log_line.textContent = `> ${message}`;
+    terminal_log.appendChild(log_line);
+    terminal_log.scrollTop = terminal_log.scrollHeight;
+}
+
+function init_system() {
+    for (let u in access_matrix) {
+        let opt = document.createElement("option");
+        opt.value = u;
+        opt.textContent = u;
+        login_user_select.appendChild(opt);
+    }
+
+    let first_user = Object.keys(access_matrix)[0];
+    for (let f in access_matrix[first_user]) {
+        let opt = document.createElement("option");
+        opt.value = f;
+        opt.textContent = f;
+        target_file_select.appendChild(opt);
+    }
+    
+    render_matrix_table();
+}
+
+function render_matrix_table() {
+    let thead = "<tr><th>User \\ File</th>";
+    let file_list = Object.keys(access_matrix[Object.keys(access_matrix)[0]]);
+    
+    for (let f of file_list) {
+        thead += `<th>${f}</th>`;
+    }
+    thead += "</tr>";
+
+    let tbody = "";
+    for (let u in access_matrix) {
+        tbody += `<tr><td><strong>${u}</strong></td>`;
+        for (let f of file_list) {
+            let bits = access_matrix[u][f].join("");
+            tbody += `<td>${bits}</td>`;
+        }
+        tbody += "</tr>";
+    }
+    matrix_display.innerHTML = thead + tbody;
+}
+
+function login_system() {
+    active_user = login_user_select.value;
+    login_area.style.display = "none";
+    workspace_area.style.display = "block";
+    current_user_display.textContent = active_user;
+    write_log(`[AUTH] User '${active_user}' logged in successfully.`, "log_system");
+}
+
+function logout_system() {
+    write_log(`[AUTH] User '${active_user}' logged out.`, "log_system");
+    active_user = null;
+    login_area.style.display = "block";
+    workspace_area.style.display = "none";
+}
+
+function execute_action(bit_index, action_name) {
+    let target_file = target_file_select.value;
+    write_log(`[REQ] ${active_user} attempting to ${action_name} file: ${target_file}...`, "log_entry");
+    
+    let user_permissions = access_matrix[active_user][target_file];
+    let bit_value = user_permissions[bit_index];
+    
+    write_log(`[CHECK] access_matrix['${active_user}']['${target_file}'][${bit_index}] == ${bit_value}`, "log_system");
+    
+    if (bit_value === 1) {
+        write_log(`[GRANTED] Action ${action_name} executed.`, "log_success");
+    } else {
+        write_log(`[DENIED] Permission denied for ${action_name}.`, "log_error");
+    }
+}
+
+init_system();
+</script>
+</body>
+</html>
